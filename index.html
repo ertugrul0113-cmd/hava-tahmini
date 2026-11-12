@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hava Tahmini">
+<meta name="theme-color" content="#11151d">
+<title>Hava Tahmini</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="ikon-180.png">
+<link rel="icon" href="ikon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="harita"></div>
+
+<header id="ust">
+  <button id="araBtn" class="hap">🔍 <span>Yer ara</span></button>
+  <button id="uyariBtn" class="hap uyari-hap" hidden>⚠️ <b>0</b></button>
+  <button id="menuBtn" class="yuvarlak" aria-label="Ayarlar">☰</button>
+</header>
+
+<nav id="katmanSerit" aria-label="Katmanlar"></nav>
+<nav id="seviyeSerit" aria-label="Yükseklik" hidden></nav>
+
+<div id="alt">
+  <div id="altSatir">
+    <button id="konumBtn" class="yuvarlak" aria-label="Konumum">◎</button>
+    <div id="gosterge"></div>
+    <button id="modelBtn" class="hap kucuk">Oto</button>
+  </div>
+  <div id="zamanCubugu">
+    <button id="oynatBtn" class="yuvarlak" aria-label="Oynat">▶</button>
+    <div id="zamanIz">
+      <div id="gunler"></div>
+      <div id="simdiCizgi"></div>
+      <div id="imlec"><span id="zamanEtiket"></span></div>
+    </div>
+  </div>
+</div>
+
+<div id="yukleniyor" hidden><i></i></div>
+<div id="bildirim" hidden></div>
+<div id="perde" hidden></div>
+
+<section class="sayfa" id="tahminSayfa"></section>
+
+<section class="sayfa" id="katmanSayfa">
+  <div class="tutamak"></div>
+  <div class="sayfa-ust"><b>Katmanlar</b><button class="ikon-btn" data-kapat>✕</button></div>
+  <div class="sayfa-govde" id="katmanListe"></div>
+</section>
+
+<section class="sayfa" id="araSayfa">
+  <div class="tutamak"></div>
+  <div class="sayfa-ust"><input id="araKutu" type="search" placeholder="Şehir, ilçe, köy…" autocomplete="off"><button class="ikon-btn" data-kapat>✕</button></div>
+  <div class="sayfa-govde" id="araSonuc"></div>
+</section>
+
+<section class="sayfa" id="modelSayfa">
+  <div class="tutamak"></div>
+  <div class="sayfa-ust"><b>Tahmin modeli</b><button class="ikon-btn" data-kapat>✕</button></div>
+  <div class="sayfa-govde" id="modelListe"></div>
+</section>
+
+<section class="sayfa" id="ayarSayfa">
+  <div class="tutamak"></div>
+  <div class="sayfa-ust"><b>Ayarlar</b><button class="ikon-btn" data-kapat>✕</button></div>
+  <div class="sayfa-govde" id="ayarIcerik"></div>
+</section>
+
+<section class="sayfa" id="uyariSayfa">
+  <div class="tutamak"></div>
+  <div class="sayfa-ust"><b>Uyarılar</b><button class="ikon-btn" data-kapat>✕</button></div>
+  <div class="sayfa-govde" id="uyariIcerik"></div>
+</section>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
