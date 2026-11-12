@@ -9,7 +9,7 @@ import { VARSAYILAN_BIRIM, BIRIM_SECENEK, yaz, birimAdi, cevir, yonAdi } from '.
 import { uyarilariBul } from './uyari.js';
 
 /* global L */
-export const SURUM = '0.1';
+export const SURUM = '0.2';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -167,24 +167,55 @@ function dunDun() {
   return d.toISOString().slice(0, 10);
 }
 
+// Uydu görüntüsü en fazla bu yakınlıkta istenir; daha yakında tarayıcı yumuşak büyütür.
+// (Uydunun kendi netliği gündüz ~1 km, gece ~2-3 km; daha yakına net görüntü yok.)
+const UYDU_EN_YAKIN = 7;
+function uyduKatmani(id, zaman) {
+  const t = new Date(zaman * 1000).toISOString().slice(0, 19) + 'Z';
+  const ek = { time: t, maxNativeZoom: UYDU_EN_YAKIN, opacity: 0 };
+  if (id === 'uydu') return wms('mtg_fd:rgb_geocolour', ek);
+  if (id === 'uyduKizil') return wms('mtg_fd:ir105_hrfi', ek);
+  // yıldırım: soluk kızılötesi üstünde son 10 dakikanın yıldırımları
+  return L.layerGroup([wms('mtg_fd:ir105_hrfi', { ...ek, oran: 0.4 }), wms('mtg_fd:li_afa', ek)]);
+}
+function opaklik(l, o) {
+  if (l.eachLayer) l.eachLayer(x => x.setOpacity(o * (x.options.oran ?? 1)));
+  else l.setOpacity(o);
+}
+
+// Radar ve uydu için oynatılabilir kareler. radar = { kareler:[{time}], yap(i), katmanlar, i, opak }
 async function karoKur(k) {
   karoKaldir();
   if (k.id === 'radar') {
     try {
       const r = await radarKareleri();
       if (ayar.katman !== 'radar') return;
-      radar = { ...r, katmanlar: r.kareler.map(() => null), i: r.kareler.length - 1 };
+      radar = {
+        kareler: r.kareler, katmanlar: r.kareler.map(() => null), i: r.kareler.length - 1, opak: 0.85,
+        yap: i => L.tileLayer(`${r.host}${r.kareler[i].path}/256/{z}/{x}/{y}/2/1_1.png`, {
+          pane: 'karoPane', maxNativeZoom: 7, maxZoom: 12, opacity: 0, attribution: 'RainViewer'
+        })
+      };
       radarGoster(radar.i);
       zamanCiz();
     } catch (e) { bildir('Radar alınamadı: ' + e.message); }
     return;
   }
-  if (k.id === 'uydu') karoKatman = wms('mtg_fd:rgb_geocolour', { opacity: 0.95 });
-  else if (k.id === 'uyduKizil') karoKatman = wms('mtg_fd:ir105_hrfi', { opacity: 0.85 });
-  else if (k.id === 'uyduDunya') karoKatman = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/${dunDun()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
+  if (['uydu', 'uyduKizil', 'yildirim'].includes(k.id)) {
+    // Son 2 saat, 20 dakikada bir kare (görüntü ~20 dk gecikmeli gelir)
+    const son = Math.floor((Date.now() / 1000 - 25 * 60) / 600) * 600;
+    const kareler = Array.from({ length: 7 }, (_, i) => ({ time: son - (6 - i) * 1200 }));
+    radar = {
+      kareler, katmanlar: kareler.map(() => null), i: kareler.length - 1, opak: k.id === 'uyduKizil' ? 0.85 : 0.95,
+      yap: i => uyduKatmani(k.id, kareler[i].time)
+    };
+    radarGoster(radar.i);
+    zamanCiz();
+    return;
+  }
+  if (k.id === 'uyduDunya') karoKatman = L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/${dunDun()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
     pane: 'karoPane', maxNativeZoom: 9, maxZoom: 12, attribution: 'NASA GIBS', opacity: 0.95
   });
-  else if (k.id === 'yildirim') karoKatman = L.layerGroup([wms('mtg_fd:ir105_hrfi', { opacity: 0.35 }), wms('mtg_fd:li_afa', { opacity: 1 })]);
   if (karoKatman) karoKatman.addTo(map);
 }
 function karoKaldir() {
@@ -193,30 +224,44 @@ function karoKaldir() {
 }
 function radarKatmani(i) {
   if (!radar.katmanlar[i]) {
-    const k = radar.kareler[i];
-    radar.katmanlar[i] = L.tileLayer(`${radar.host}${k.path}/256/{z}/{x}/{y}/2/1_1.png`, {
-      pane: 'karoPane', maxNativeZoom: 7, maxZoom: 12, opacity: 0, attribution: 'RainViewer'
-    }).addTo(map);
+    const l = radar.yap(i);
+    const r = radar;
+    // Kare yüklenince işaretle; o sırada istenen kare buysa göster
+    const parcalar = l.eachLayer ? l.getLayers() : [l];
+    let kalan = parcalar.length;
+    parcalar.forEach(p => p.on('load', () => {
+      if (--kalan !== 0 || l.yuklendi) return;
+      l.yuklendi = true;
+      if (r !== radar) return;
+      if (r.i === i) radarGoster(i);
+      // Sıradaki eksik kareyi arkadan yükle (hepsini birden istemek sunucuyu yavaşlatıyor)
+      const sira = r.katmanlar.findIndex(x => !x);
+      if (sira >= 0) radarKatmani(sira);
+    }));
+    radar.katmanlar[i] = l.addTo(map);
   }
   return radar.katmanlar[i];
 }
 function radarGoster(i) {
   radar.i = i;
-  radarKatmani(i).setOpacity(0.85);
-  radar.katmanlar.forEach((l, j) => { if (l && j !== i) l.setOpacity(0); });
-  // bir sonrakini önceden yükle
-  if (i + 1 < radar.kareler.length) radarKatmani(i + 1);
-}
-// Uydu/yıldırım 10 dakikada bir yenilensin
+  const l = radarKatmani(i);
+  // Yeni kare gelene kadar ekrandaki kare kalsın (boş görüntü olmasın)
+  if (!l.yuklendi && radar.gorunen != null && radar.gorunen !== i) return;
+  opaklik(l, radar.opak);
+  radar.gorunen = i;
+  radar.katmanlar.forEach((x, j) => { if (x && j !== i) opaklik(x, 0); });
+}// Radar/uydu/yıldırım 10 dakikada bir tazelensin
 setInterval(() => {
-  if (karoKatman && karoKatman.setParams) karoKatman.setParams({ _t: Date.now() });
-  if (karoKatman && karoKatman.eachLayer) karoKatman.eachLayer(l => l.setParams && l.setParams({ _t: Date.now() }));
+  const k = katmanBul(ayar.katman);
+  if (k.tur === 'karo' && k.id !== 'uyduDunya') karoKur(k);
 }, 10 * 60 * 1000);
 
 // ---------------- Katman seçimi ----------------
 function katmanSec(id) {
   const k = katmanBul(id);
   ayar.katman = id; ayarKaydet();
+  yuklemeNo++; // önceki katmanın geç gelen verisi çizilmesin
+  yukleniyor(false);
   karoKaldir();
   if (k.tur === 'karo') { renkCiz(tuval, null); izobarCiz(tuval, null); parcacik.dur(); alanBilgi = null; karoKur(k); }
   if (oynuyor) oynatDur();
@@ -254,7 +299,9 @@ function gostergeCiz() {
   const k = katmanBul(ayar.katman);
   const el = $('#gosterge');
   if (k.tur === 'karo' && !['radar', 'yildirim'].includes(k.id)) {
-    el.innerHTML = `<span class="gosterge-ad">${esc(k.ad)}</span><span class="gosterge-not">${k.id === 'uyduDunya' ? 'Dünkü görüntü' : 'Avrupa, Afrika, Orta Doğu · ~15 dk gecikme'}</span>`;
+    el.innerHTML = `<span class="gosterge-ad">${esc(k.ad)}</span><span class="gosterge-not">${k.id === 'uyduDunya'
+      ? 'Dünkü görüntü · en net uydu (~400 m)'
+      : 'Avrupa, Afrika, Orta Doğu · netlik gündüz ~1 km, gece ~3 km'}</span>`;
     return;
   }
   const olcek = OLCEKLER[k.olcek];
@@ -280,7 +327,7 @@ function gostergeCiz() {
 const GUN_K = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 function aralik() {
   const k = katmanBul(ayar.katman);
-  if (k.id === 'radar' && radar) return { radar: true, bas: radar.kareler[0].time, son: radar.kareler[radar.kareler.length - 1].time };
+  if (k.tur === 'karo' && radar) return { radar: true, bas: radar.kareler[0].time, son: radar.kareler[radar.kareler.length - 1].time };
   if (k.tur === 'karo') return null;
   const gun = k.kaynak === 'hava_kalitesi' ? 5 : 7;
   return { bas: bugun0(), son: bugun0() + gun * 86400 - SAAT };
@@ -374,7 +421,11 @@ $('#oynatBtn').addEventListener('click', () => {
   oynuyor = setInterval(() => {
     const a = aralik();
     if (!a) return oynatDur();
-    if (a.radar) { radarGoster((radar.i + 1) % radar.kareler.length); imlecCiz(); return; }
+    if (a.radar) {
+      const j = (radar.i + 1) % radar.kareler.length;
+      if (!radarKatmani(j).yuklendi) return; // kare gelene kadar bekle
+      radarGoster(j); imlecCiz(); return;
+    }
     zaman = zaman + SAAT > a.son ? a.bas : zaman + SAAT;
     imlecCiz(); ciz(true);
   }, katmanBul(ayar.katman).id === 'radar' ? 600 : 700);

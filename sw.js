@@ -1,5 +1,5 @@
 // Önce ağ, olmazsa önbellek: yeni sürüm telefona kendiliğinden gelir.
-const ONBELLEK = 'hava-tahmini-v1';
+const ONBELLEK = 'hava-tahmini-v2';
 const DOSYALAR = ['./', 'index.html', 'style.css', 'app.js', 'katmanlar.js', 'olcek.js', 'izgara.js', 'veri.js', 'harita-cizim.js', 'tahmin.js',
   'grafik.js', 'birim.js', 'hava-kodu.js', 'uyari.js', 'manifest.webmanifest', 'ikon-180.png', 'ikon-192.png', 'ikon-512.png',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css'];
